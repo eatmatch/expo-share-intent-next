@@ -699,11 +699,11 @@ class ExpoShareIntentModule : Module() {
     ): File? {
         // Try to get the original filename
         return try {
-            resolver.query(uri, arrayOf("_display_name"), selection, selectionArgs, null)
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), selection, selectionArgs, null)
                 ?.use { cursor ->
                     if (cursor.moveToFirst()) {
-                        val columnIndex = cursor.getColumnIndexOrThrow("_display_name")
-                        val fileName = UUID.randomUUID().toString()
+                        val columnIndex = cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)
+                        val fileName = cursor.getString(columnIndex)
                         Log.i("FileDirectory", "File name: $fileName")
                         File(context.cacheDir, fileName)
                     } else {

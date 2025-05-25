@@ -16,9 +16,10 @@ import HomeScreen from "./HomeScreen";
 import ShareIntentScreen from "./ShareIntentScreen";
 import ContactsScreen from "./ContactsScreen";
 import {
-  ShareIntentModule,
+  addShareIntentListener,
   getScheme,
   getShareExtensionKey,
+  hasShareIntent,
 } from "../../../src";
 
 const Stack = createNativeStackNavigator();
@@ -78,7 +79,7 @@ const linking: LinkingOptions<RootStackParamList> = {
         listener(url);
       }
     };
-    const shareIntentStateSubscription = ShareIntentModule?.addListener(
+    const shareIntentStateSubscription = addShareIntentListener(
       "onStateChange",
       (event) => {
         // REQUIRED FOR ANDROID WHEN APP IS IN BACKGROUND
@@ -91,7 +92,7 @@ const linking: LinkingOptions<RootStackParamList> = {
         }
       },
     );
-    const shareIntentValueSubscription = ShareIntentModule?.addListener(
+    const shareIntentValueSubscription = addShareIntentListener(
       "onChange",
       async (event) => {
         // REQUIRED FOR IOS WHEN APP IS IN BACKGROUND
@@ -117,9 +118,7 @@ const linking: LinkingOptions<RootStackParamList> = {
   async getInitialURL() {
     console.debug("react-navigation[getInitialURL] ?");
     // REQUIRED FOR ANDROID FIRST LAUNCH
-    const needRedirect = ShareIntentModule?.hasShareIntent(
-      getShareExtensionKey(),
-    );
+    const needRedirect = await hasShareIntent(getShareExtensionKey());
     console.debug(
       "react-navigation[getInitialURL] redirect to ShareIntent screen:",
       needRedirect,
@@ -128,7 +127,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       return `${Constants.expoConfig?.scheme}://shareintent`;
     }
     // As a fallback, do the default deep link handling
-    const url = await Linking.getLinkingURL();
+    const url = Linking.getLinkingURL();
     return url;
   },
 };
