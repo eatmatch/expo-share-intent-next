@@ -21,30 +21,12 @@
       "problemMatcher": []
     },
     {
-      "label": "Clean basic example",
+      "label": "Clean example",
       "command": "nvm use && rm -fr node_modules .expo ios android && yarn install",
       "type": "shell",
       "problemMatcher": [],
       "options": {
-        "cwd": "./example/basic"
-      }
-    },
-    {
-      "label": "Clean expo-router example",
-      "command": "nvm use && rm -fr node_modules .expo ios android && yarn install",
-      "type": "shell",
-      "problemMatcher": [],
-      "options": {
-        "cwd": "./example/expo-router"
-      }
-    },
-    {
-      "label": "Clean react-navigation example",
-      "command": "nvm use && rm -fr node_modules .expo ios android && yarn install",
-      "type": "shell",
-      "problemMatcher": [],
-      "options": {
-        "cwd": "./example/react-navigation"
+        "cwd": "./example"
       }
     },
     {
@@ -58,57 +40,21 @@
       "problemMatcher": []
     },
     {
-      "label": "Fix basic example",
+      "label": "Fix example",
       "command": "nvm use && yarn test:fix && yarn doctor",
       "type": "shell",
       "problemMatcher": [],
       "options": {
-        "cwd": "./example/basic"
+        "cwd": "./example"
       }
     },
     {
-      "label": "Fix expo-router example",
-      "command": "nvm use && yarn test:fix && yarn doctor",
-      "type": "shell",
-      "problemMatcher": [],
-      "options": {
-        "cwd": "./example/expo-router"
-      }
-    },
-    {
-      "label": "Fix react-navigation example",
-      "command": "nvm use && yarn test:fix && yarn doctor",
-      "type": "shell",
-      "problemMatcher": [],
-      "options": {
-        "cwd": "./example/react-navigation"
-      }
-    },
-    {
-      "label": "Run basic example",
+      "label": "Run example",
       "command": "nvm use && yarn clean && yarn ios",
       "type": "shell",
       "problemMatcher": [],
       "options": {
-        "cwd": "./example/basic"
-      }
-    },
-    {
-      "label": "Run expo-router example",
-      "command": "nvm use && yarn clean && yarn ios",
-      "type": "shell",
-      "problemMatcher": [],
-      "options": {
-        "cwd": "./example/expo-router"
-      }
-    },
-    {
-      "label": "Run react-navigation example",
-      "command": "nvm use && yarn clean && yarn ios",
-      "type": "shell",
-      "problemMatcher": [],
-      "options": {
-        "cwd": "./example/react-navigation"
+        "cwd": "./example"
       }
     },
     {

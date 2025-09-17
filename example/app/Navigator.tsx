@@ -1,7 +1,3 @@
-import { createRef } from "react";
-import { Text, View } from "react-native";
-import Constants from "expo-constants";
-import * as Linking from "expo-linking";
 import {
   LinkingOptions,
   NavigationContainer,
@@ -9,18 +5,21 @@ import {
   getStateFromPath,
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import Constants from "expo-constants";
+import * as Linking from "expo-linking";
+import React, { createRef } from "react";
+import { Text, View } from "react-native";
 
-import { RootStackParamList } from "./types";
-
+import ContactsScreen from "./ContactsScreen";
 import HomeScreen from "./HomeScreen";
 import ShareIntentScreen from "./ShareIntentScreen";
-import ContactsScreen from "./ContactsScreen";
+import { RootStackParamList } from "./types";
 import {
   addShareIntentListener,
   getScheme,
   getShareExtensionKey,
   hasShareIntent,
-} from "../../../src";
+} from "../../src";
 
 const Stack = createNativeStackNavigator();
 

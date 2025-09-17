@@ -1,11 +1,12 @@
+import React from "react";
 import { Button, Image, StyleSheet, Text, View } from "react-native";
-import { StackNavigationProp } from "@react-navigation/stack";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { ShareIntent, useShareIntentContext } from "expo-share-intent-next";
 import { RootStackParamList } from "./types";
 
 interface Props {
-  navigation: StackNavigationProp<RootStackParamList, "ShareIntent">;
+  navigation: NativeStackNavigationProp<RootStackParamList, "ShareIntent">;
 }
 
 const WebUrlComponent = ({ shareIntent }: { shareIntent: ShareIntent }) => {
@@ -63,7 +64,6 @@ export default function ShareIntentScreen({ navigation }: Props) {
         <Button onPress={() => resetShareIntent()} title="Reset" />
       )}
       <Text style={[styles.error]}>{error}</Text>
-      {/* @ts-ignore */}
       <Button onPress={() => navigation.navigate("Home")} title="Go home" />
     </View>
   );

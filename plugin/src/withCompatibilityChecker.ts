@@ -1,6 +1,6 @@
 import { ConfigPlugin, WarningAggregator } from "@expo/config-plugins";
 
-import { getShareExtensionName } from "./ios/utils";
+import { getShareExtensionName } from "./ios/constants";
 import { Parameters } from "./types";
 import packageInfo from "../../package.json";
 
@@ -58,7 +58,7 @@ export const withCompatibilityChecker: ConfigPlugin<Parameters> = (
       );
     }
   } else {
-    console.warn(`[expo-share-intent-next] IOS module disabled`);
+    console.warn(`[${packageInfo.name}] IOS module disabled`);
   }
 
   return config;

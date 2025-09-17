@@ -3,8 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "expo-share-intent-next": ["../../src/index"],
-      "expo-share-intent-next/*": ["../../src/*"]
+      "expo-share-intent-next": ["../src/index"],
+      "expo-share-intent-next/*": ["../src/*"]
     }
   }
 }

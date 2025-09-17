@@ -15,7 +15,7 @@
     "assetBundlePatterns": ["**/*"],
     "plugins": [
       [
-        "../../app.plugin.js",
+        "../app.plugin.js",
         {
           "iosActivationRules": {
             "NSExtensionActivationSupportsText": true,

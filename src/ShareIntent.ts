@@ -1,3 +1,4 @@
+import { EventSubscription } from "expo-modules-core";
 import { Image } from "react-native";
 
 import { ExpoShareIntent } from "./ExpoShareIntent";
@@ -108,7 +109,7 @@ export function hasShareIntent(key: string): Promise<boolean> {
 export function addShareIntentListener<T extends keyof ExpoShareIntentEvents>(
   eventName: T,
   listener: ExpoShareIntentEvents[T],
-) {
+): EventSubscription {
   if (!ExpoShareIntent) {
     throw new Error("ExpoShareIntent module is not available");
   }

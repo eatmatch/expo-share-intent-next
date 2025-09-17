@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.homepage       = package['homepage']
   s.platform       = :ios, '15.1'
   s.swift_version  = '5.0'
-  s.source         = { git: 'https://github.com/achorein/expo-share-intent' }
+  s.source         = { git: 'https://github.com/eatmatch/expo-share-intent-next' }
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'

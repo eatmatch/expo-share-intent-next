@@ -25,12 +25,12 @@ jobs:
             node_modules
           key: ${{ github.sha }}
 
-  example-react-navigation:
+  example:
     needs: build-plugin
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: example/react-navigation
+        working-directory: example
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3

@@ -1,9 +1,11 @@
-import { ConfigPlugin } from "@expo/config-plugins";
 import plist from "@expo/plist";
+import { ConfigPlugin } from "@expo/config-plugins";
 import fs from "node:fs";
 import path from "node:path";
 
 import {
+  getShareExtensionName,
+  getAppGroup,
   shareExtensionEntitlementsFileName,
   shareExtensionInfoFileName,
   shareExtensionStoryBoardFileName,
@@ -11,7 +13,6 @@ import {
   shareExtensionPreprocessorFileName,
 } from "./constants";
 import { Parameters } from "../types";
-import { getAppGroup, getShareExtensionName } from "./utils";
 
 export async function writeShareExtensionFiles(
   platformProjectRoot: string,
@@ -84,15 +85,7 @@ export async function writeShareExtensionFiles(
 export function getShareExtensionEntitlementsFilePath(
   platformProjectRoot: string,
   parameters: Parameters,
-  noRoot: boolean = false,
 ) {
-  if (noRoot) {
-    return path.join(
-      getShareExtensionName(parameters),
-      shareExtensionEntitlementsFileName,
-    );
-  }
-
   return path.join(
     platformProjectRoot,
     getShareExtensionName(parameters),
@@ -122,15 +115,7 @@ export function getShareExtensionEntitlementsContent(
 export function getShareExtensionInfoFilePath(
   platformProjectRoot: string,
   parameters: Parameters,
-  noRoot: boolean = false,
 ) {
-  if (noRoot) {
-    return path.join(
-      getShareExtensionName(parameters),
-      shareExtensionInfoFileName,
-    );
-  }
-
   return path.join(
     platformProjectRoot,
     getShareExtensionName(parameters),
@@ -159,7 +144,6 @@ export function getShareExtensionInfoContent(
           NSExtensionActivationSupportsWebPageWithMaxCount: 1,
         },
         NSExtensionJavaScriptPreprocessingFile: "ShareExtensionPreprocessor",
-        IntentsSupported: ["INSendMessageIntent"],
       },
       NSExtensionMainStoryboard: "MainInterface",
       NSExtensionPointIdentifier: "com.apple.share-services",

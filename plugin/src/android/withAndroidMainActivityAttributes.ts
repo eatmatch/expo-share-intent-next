@@ -1,4 +1,3 @@
-
 import {
   AndroidManifest,
   ConfigPlugin,
