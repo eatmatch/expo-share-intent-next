@@ -49,9 +49,9 @@ yarn-error.log
 
 # Expo
 *.tsbuildinfo
-example/*/.expo
-example/*/android
-example/*/ios
+example/*.expo
+example/android
+example/ios
 
 # Custom
 .env

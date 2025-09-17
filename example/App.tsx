@@ -1,4 +1,5 @@
 import { ShareIntentProvider } from "expo-share-intent-next";
+
 import Navigator, { navigationRef } from "./app/Navigator";
 
 export default function App() {
