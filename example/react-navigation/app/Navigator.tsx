@@ -1,4 +1,4 @@
-import { createRef } from "react";
+import React, { createRef } from "react";
 import { Text, View } from "react-native";
 import Constants from "expo-constants";
 import * as Linking from "expo-linking";

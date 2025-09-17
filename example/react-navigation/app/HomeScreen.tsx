@@ -1,10 +1,11 @@
+import React from "react";
 import { useShareIntentContext } from "expo-share-intent-next";
 import { Text, View, StyleSheet, Button } from "react-native";
-import { StackNavigationProp } from "@react-navigation/stack";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "./types";
 
 interface Props {
-  navigation: StackNavigationProp<RootStackParamList, "Home">;
+  navigation: NativeStackNavigationProp<RootStackParamList, "Home">;
 }
 
 export default function HomeScreen({ navigation }: Props) {

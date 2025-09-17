@@ -11,7 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { useShareIntentContext } from "expo-share-intent-next";
-import { StackNavigationProp } from "@react-navigation/stack";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "./types";
 
 interface Contact {
@@ -108,7 +108,7 @@ const generateMockContacts = (count: number): Contact[] => {
 };
 
 interface Props {
-  navigation: StackNavigationProp<RootStackParamList, "Contacts">;
+  navigation: NativeStackNavigationProp<RootStackParamList, "Contacts">;
 }
 
 export default function ContactsScreen({ navigation }: Props) {
@@ -168,7 +168,9 @@ export default function ContactsScreen({ navigation }: Props) {
           donateSendMessage({
             conversationId: contact.id,
             name: contact.name,
-            imageURL: contact.avatar || undefined,
+            image: {
+              uri: contact.avatar || undefined,
+            },
             content: contact.lastMessage,
           })
             .then(() => {
@@ -201,7 +203,9 @@ export default function ContactsScreen({ navigation }: Props) {
     donateSendMessage({
       conversationId: contact.id,
       name: contact.name,
-      imageURL: contact.avatar || undefined,
+      image: {
+        uri: contact.avatar || undefined,
+      },
       content: `New message to ${contact.name} (${new Date().toLocaleTimeString()})`,
     });
 
@@ -355,5 +359,44 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "bold",
     fontSize: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#666",
+    marginTop: 12,
+    textAlign: "center",
+  },
+  donationStatus: {
+    marginTop: 8,
+  },
+  donationPending: {
+    fontSize: 12,
+    color: "#f39c12",
+    fontStyle: "italic",
+  },
+  donationLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  donationLoadingText: {
+    fontSize: 12,
+    color: "#3498db",
+    marginLeft: 4,
+  },
+  donationSuccess: {
+    fontSize: 12,
+    color: "#27ae60",
+    fontWeight: "500",
+  },
+  donationFailure: {
+    fontSize: 12,
+    color: "#e74c3c",
+    fontWeight: "500",
   },
 });
