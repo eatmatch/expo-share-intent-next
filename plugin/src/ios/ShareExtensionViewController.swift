@@ -17,34 +17,36 @@ class ShareViewController: UIViewController {
   let urlContentType: String = UTType.url.identifier
   let propertyListType: String = UTType.propertyList.identifier
   let fileURLType: String = UTType.fileURL.identifier
+  let pkpassContentType: String = "com.apple.pkpass"
   let pdfContentType: String = UTType.pdf.identifier
+  
   private var conversationId: String? = nil
-
+  
   override func viewDidLoad() {
     super.viewDidLoad()
-
+    
     // Populate the recipient property with the metadata in case the person taps a suggestion from the share sheet.
     let intent = self.extensionContext?.intent as? INSendMessageIntent
     if intent != nil {
       self.conversationId = intent!.conversationIdentifier
     }
   }
-
+  
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
     Task {
       guard let extensionContext = self.extensionContext,
-        let content = extensionContext.inputItems.first as? NSExtensionItem,
-        let attachments = content.attachments
+            let content = extensionContext.inputItems.first as? NSExtensionItem,
+            let attachments = content.attachments
       else {
         dismissWithError(message: "No content found")
         return
       }
-
+      
       await processAttachments(attachments, content: content)
     }
   }
-
+  
   private func processAttachments(
     _ attachments: [NSItemProvider], content: NSExtensionItem
   ) async {
@@ -54,12 +56,12 @@ class ShareViewController: UIViewController {
       } else {
         NSLog(
           "[ERROR] content type not handled: \(String(describing: content))")
-        await dismissWithError(
+        dismissWithError(
           message: "Content type not handled \(String(describing: content))")
       }
     }
   }
-
+  
   private func getHandlerForAttachment(_ attachment: NSItemProvider) -> (
     (NSExtensionItem, NSItemProvider, Int) async -> Void
   )? {
@@ -71,6 +73,9 @@ class ShareViewController: UIViewController {
     }
     if attachment.hasItemConformingToTypeIdentifier(fileURLType) {
       return handleFiles
+    }
+    if attachment.hasItemConformingToTypeIdentifier(pkpassContentType) {
+      return handlePkPass
     }
     if attachment.hasItemConformingToTypeIdentifier(pdfContentType) {
       return handlePdf
@@ -86,475 +91,422 @@ class ShareViewController: UIViewController {
     }
     return nil
   }
-
+  
   private func handleText(
     content: NSExtensionItem, attachment: NSItemProvider, index: Int
   ) async {
     Task.detached {
-      do {
-        guard
-          let item = try await attachment.loadItem(
-            forTypeIdentifier: self.textContentType) as? String
-        else {
-          throw NSError(
-            domain: "TextLoadingError", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Invalid text format"])
+      if let item = try! await attachment.loadItem(forTypeIdentifier: self.textContentType)
+          as? String
+      {
+        Task { @MainActor in
+          
+          self.sharedText.append(item)
+          // If this is the last item, save sharedText in userDefaults and redirect to host app
+          if index == (content.attachments?.count)! - 1 {
+            let userDefaults = UserDefaults(suiteName: self.hostAppGroupIdentifier)
+            userDefaults?.set(self.sharedText, forKey: self.sharedKey)
+            userDefaults?.synchronize()
+            self.redirectToHostApp(type: .text)
+          }
+          
         }
-
-        await self.processTextItem(item, content: content, index: index)
-      } catch {
-        NSLog("[ERROR] Cannot load text content: \(error)")
+      } else {
+        NSLog("[ERROR] Cannot load text content !\(String(describing: content))")
         await self.dismissWithError(
-          message: "Cannot load text content: \(error)")
+          message: "Cannot load text content \(String(describing: content))")
       }
     }
   }
-
-  private func processTextItem(
-    _ item: String, content: NSExtensionItem, index: Int
-  ) async {
-    self.sharedText.append(item)
-
-    // If this is the last item, save sharedText in userDefaults and redirect to host app
-    let isLastItem = index == (content.attachments?.count)! - 1
-    if isLastItem {
-      let payload: [SharedText] = sharedText.map {
-        SharedText(
-          text: $0,
-          conversationId: self.conversationId)
-      }
-
-      saveAndRedirect(data: self.toData(data: payload), type: .text)
-    }
-  }
-
+  
   private func handleUrl(
     content: NSExtensionItem, attachment: NSItemProvider, index: Int
   ) async {
     Task.detached {
-      do {
-        guard
-          let item = try await attachment.loadItem(
-            forTypeIdentifier: self.urlContentType) as? URL
-        else {
-          throw NSError(
-            domain: "URLLoadingError", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Invalid URL format"])
+      if let item = try! await attachment.loadItem(forTypeIdentifier: self.urlContentType) as? URL {
+        Task { @MainActor in
+          
+          self.sharedWebUrl.append(WebUrl(url: item.absoluteString, meta: "", conversationId: self.conversationId))
+          // If this is the last item, save sharedText in userDefaults and redirect to host app
+          if index == (content.attachments?.count)! - 1 {
+            let userDefaults = UserDefaults(suiteName: self.hostAppGroupIdentifier)
+            userDefaults?.set(self.toData(data: self.sharedWebUrl), forKey: self.sharedKey)
+            userDefaults?.synchronize()
+            self.redirectToHostApp(type: .weburl)
+          }
+          
         }
-
-        await self.processUrlItem(item, content: content, index: index)
-      } catch {
-        NSLog("[ERROR] Cannot load url content: \(error)")
+      } else {
+        NSLog("[ERROR] Cannot load url content !\(String(describing: content))")
         await self.dismissWithError(
-          message: "Cannot load url content: \(error)")
+          message: "Cannot load url content \(String(describing: content))")
       }
     }
   }
-
-  private func processUrlItem(_ url: URL, content: NSExtensionItem, index: Int)
-    async
-  {
-    self.sharedWebUrl.append(
-      WebUrl(
-        url: url.absoluteString, meta: "",
-        conversationId: self.conversationId))
-
-    // If this is the last item, save and redirect
-    let isLastItem = index == (content.attachments?.count)! - 1
-    if isLastItem {
-      saveAndRedirect(data: self.toData(data: self.sharedWebUrl), type: .weburl)
-    }
-  }
-
+  
   private func handlePrepocessing(
     content: NSExtensionItem, attachment: NSItemProvider, index: Int
   ) async {
     Task.detached {
-      do {
-        guard
-          let item = try await attachment.loadItem(
-            forTypeIdentifier: self.propertyListType, options: nil)
-            as? NSDictionary
-        else {
-          throw NSError(
-            domain: "PreprocessingLoadingError", code: 1,
-            userInfo: [
-              NSLocalizedDescriptionKey: "Invalid preprocessing content"
-            ])
+      if let item = try! await attachment.loadItem(
+        forTypeIdentifier: self.propertyListType, options: nil)
+          as? NSDictionary
+      {
+        Task { @MainActor in
+          
+          if let results = item[NSExtensionJavaScriptPreprocessingResultsKey]
+              as? NSDictionary
+          {
+            NSLog(
+              "[DEBUG] NSExtensionJavaScriptPreprocessingResultsKey \(String(describing: results))"
+            )
+            self.sharedWebUrl.append(
+              WebUrl(url: results["baseURI"] as! String, meta: results["meta"] as! String, conversationId: self.conversationId))
+            // If this is the last item, save sharedText in userDefaults and redirect to host app
+            if index == (content.attachments?.count)! - 1 {
+              let userDefaults = UserDefaults(suiteName: self.hostAppGroupIdentifier)
+              userDefaults?.set(self.toData(data: self.sharedWebUrl), forKey: self.sharedKey)
+              userDefaults?.synchronize()
+              self.redirectToHostApp(type: .weburl)
+            }
+          } else {
+            NSLog("[ERROR] Cannot load preprocessing results !\(String(describing: content))")
+            self.dismissWithError(
+              message: "Cannot load preprocessing results \(String(describing: content))")
+          }
+          
         }
-
-        await self.processPreprocessingItem(
-          item, content: content, index: index)
-      } catch {
-        NSLog("[ERROR] Cannot load preprocessing content: \(error)")
+      } else {
+        NSLog("[ERROR] Cannot load preprocessing content !\(String(describing: content))")
         await self.dismissWithError(
-          message: "Cannot load preprocessing content: \(error)")
+          message: "Cannot load preprocessing content \(String(describing: content))")
       }
     }
   }
-
-  private func processPreprocessingItem(
-    _ item: NSDictionary, content: NSExtensionItem, index: Int
-  ) async {
-    guard
-      let results = item[NSExtensionJavaScriptPreprocessingResultsKey]
-        as? NSDictionary
-    else {
-      dismissWithError(message: "Cannot load preprocessing results")
-      return
-    }
-
-    NSLog(
-      "[DEBUG] NSExtensionJavaScriptPreprocessingResultsKey \(String(describing: results))"
-    )
-    guard let url = results["baseURI"] as? String,
-      let meta = results["meta"] as? String
-    else {
-      dismissWithError(message: "Missing required preprocessing data")
-      return
-    }
-
-    self.sharedWebUrl.append(
-      WebUrl(
-        url: url, meta: meta,
-        conversationId: self.conversationId))
-
-    // If this is the last item, save and redirect
-    let isLastItem = index == (content.attachments?.count)! - 1
-    if isLastItem {
-      saveAndRedirect(data: self.toData(data: self.sharedWebUrl), type: .weburl)
+  
+  private func handlePkPass(content: NSExtensionItem, attachment: NSItemProvider, index: Int) async {
+    Task.detached {
+      NSLog("[DEBUG] Attempting to handle pkpass file for item \(index)")
+      NSLog("[DEBUG] Available type identifiers: \(attachment.registeredTypeIdentifiers)")
+      
+      do {
+        if let url = try await attachment.loadItem(forTypeIdentifier: self.pkpassContentType) as? URL {
+          NSLog("[DEBUG] Successfully loaded pkpass as URL: \(url.absoluteString)")
+          NSLog("[DEBUG] URL path: \(url.path), isFileURL: \(url.isFileURL)")
+          await self.handleFileURL(content: content, url: url, index: index)
+          
+        } else if let data = try await attachment.loadItem(forTypeIdentifier: self.pkpassContentType) as? Data {
+          NSLog("[DEBUG] Successfully loaded pkpass as Data, size: \(data.count) bytes")
+          let tempFileName = UUID().uuidString + ".pkpass"
+          let tempFileURL = FileManager.default.temporaryDirectory.appendingPathComponent(tempFileName)
+          
+          // Writing data to a file is I/O, keep it off the main thread.
+          try data.write(to: tempFileURL)
+          NSLog("[DEBUG] Saved pkpass data to temporary file: \(tempFileURL.path)")
+          
+          // Handle the newly created temporary file URL.
+          await self.handleFileURL(content: content, url: tempFileURL, index: index)
+          
+        } else {
+          // If it's neither URL nor Data, it's unexpected for pkpassContentType.
+          NSLog("[ERROR] Cannot load pkpass content: Item was neither URL nor Data for type \(self.pkpassContentType). Attachment: \(attachment)")
+          // Ensure dismissWithError runs on the main thread if it interacts with UI
+          Task { @MainActor in
+            self.dismissWithError(message: "Cannot load pkpass content (unexpected data type).")
+          }
+        }
+      } catch {
+        // Catch errors from loadItem or data.write
+        NSLog("[ERROR] Exception when handling pkpass: \(error.localizedDescription)")
+        // Ensure dismissWithError runs on the main thread if it interacts with UI
+        Task { @MainActor in
+          self.dismissWithError(message: "Error processing pkpass: \(error.localizedDescription)")
+        }
+      }
     }
   }
-
-  private func handleImages(
-    content: NSExtensionItem, attachment: NSItemProvider, index: Int
-  ) async {
+  
+  private func handleImages(content: NSExtensionItem, attachment: NSItemProvider, index: Int) async {
     Task.detached {
       do {
-        let item = try await attachment.loadItem(
-          forTypeIdentifier: self.imageContentType)
-        await self.processImageItem(item, content: content, index: index)
+        let item = try await attachment.loadItem(forTypeIdentifier: self.imageContentType)
+        
+        Task { @MainActor in
+          var url: URL? = nil
+          
+          if let dataURL = item as? URL {
+            url = dataURL
+          } else if let imageData = item as? UIImage {
+            url = self.saveScreenshot(imageData)
+            if url == nil {
+              NSLog("[ERROR] handleImages: saveScreenshot returned nil")
+            }
+          } else if let data = item as? Data {
+            if let image = UIImage(data: data) {
+              url = self.saveScreenshot(image)
+            } else {
+              NSLog("[ERROR] handleImages: Failed to create UIImage from Data")
+            }
+          } else {
+            NSLog("[ERROR] handleImages: Item is unexpected type: \(type(of: item))")
+          }
+          
+          guard let safeURL = url else {
+            NSLog("[ERROR] handleImages: Failed to get URL for image item")
+            self.dismissWithError(message: "Failed to process image")
+            return
+          }
+          
+          var pixelWidth: Int? = nil
+          var pixelHeight: Int? = nil
+          if let imageSource = CGImageSourceCreateWithURL(safeURL as CFURL, nil) {
+            if let imageProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil)
+                as Dictionary?
+            {
+              pixelWidth = imageProperties[kCGImagePropertyPixelWidth] as? Int
+              pixelHeight = imageProperties[kCGImagePropertyPixelHeight] as? Int
+              // Check orientation and flip size if required
+              if let orientationNumber = imageProperties[kCGImagePropertyOrientation] as! CFNumber?
+              {
+                var orientation: Int = 0
+                CFNumberGetValue(orientationNumber, .intType, &orientation)
+                if orientation > 4 {
+                  let temp: Int? = pixelWidth
+                  pixelWidth = pixelHeight
+                  pixelHeight = temp
+                }
+              }
+            }
+          }
+          
+          // Always copy
+          let fileName = self.getFileName(from: safeURL, type: .image)
+          let fileExtension = self.getExtension(from: safeURL, type: .image)
+          let fileSize = self.getFileSize(from: safeURL)
+          let mimeType = safeURL.mimeType(ext: fileExtension)
+          let newName = "\(UUID().uuidString).\(fileExtension)"
+          let newPath = FileManager.default
+            .containerURL(
+              forSecurityApplicationGroupIdentifier: self.hostAppGroupIdentifier)!
+            .appendingPathComponent(newName)
+          
+          let copied = self.copyFile(at: safeURL, to: newPath)
+          
+          if copied {
+            self.sharedMedia.append(
+              SharedMediaFile(
+                path: newPath.absoluteString, thumbnail: nil, fileName: fileName,
+                fileSize: fileSize, width: pixelWidth, height: pixelHeight, duration: nil,
+                mimeType: mimeType, type: .image, conversationId: self.conversationId))
+          }
+          
+          // If this is the last item, save imagesData in userDefaults and redirect to host app
+          if index == (content.attachments?.count)! - 1 {
+            let userDefaults = UserDefaults(suiteName: self.hostAppGroupIdentifier)
+            userDefaults?.set(self.toData(data: self.sharedMedia), forKey: self.sharedKey)
+            userDefaults?.synchronize()
+            self.redirectToHostApp(type: .media)
+          }
+        }
       } catch {
-        NSLog("[ERROR] Cannot load image content: \(error)")
-        await self.dismissWithError(
-          message: "Cannot load image content: \(error)")
+        NSLog("[ERROR] handleImages: Exception loading image item: \(error)")
+        await self.dismissWithError(message: "Cannot load image content: \(error.localizedDescription)")
       }
     }
+    
   }
-
-  private func processImageItem(
-    _ item: Any, content: NSExtensionItem, index: Int
-  ) async {
-    let url = extractImageURL(from: item)
-    guard let imageUrl = url else {
-      dismissWithError(message: "Failed to extract image URL")
-      return
-    }
-
-    let dimensions = getImageDimensions(from: imageUrl)
-    let sharedFile = createSharedMediaFileForImage(
-      url: imageUrl, dimensions: dimensions)
-
-    if sharedFile != nil {
-      self.sharedMedia.append(sharedFile!)
-    }
-
-    // If this is the last item, save and redirect
-    let isLastItem = index == (content.attachments?.count)! - 1
-    if isLastItem {
-      saveAndRedirect(data: self.toData(data: self.sharedMedia), type: .media)
-    }
-  }
-
-  private func extractImageURL(from item: Any) -> URL? {
-    if let dataURL = item as? URL {
-      return dataURL
-    } else if let imageData = item as? UIImage {
-      return saveScreenshot(imageData)
-    }
-    return nil
-  }
-
+  
   private func documentDirectoryPath() -> URL? {
-    let path = FileManager.default.urls(
-      for: .documentDirectory, in: .userDomainMask)
-    return path.first
-  }
-
-  private func saveScreenshot(_ image: UIImage) -> URL? {
-    var screenshotURL: URL? = nil
-    if let screenshotData = image.pngData(),
-      let screenshotPath = documentDirectoryPath()?.appendingPathComponent(
-        "screenshot.png")
-    {
-      try? screenshotData.write(to: screenshotPath)
-      screenshotURL = screenshotPath
-    }
-    return screenshotURL
-  }
-
-  private func getImageDimensions(from url: URL) -> (width: Int?, height: Int?)
-  {
-    var pixelWidth: Int? = nil
-    var pixelHeight: Int? = nil
-
-    guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-      return (nil, nil)
-    }
-
-    guard
-      let imageProperties = CGImageSourceCopyPropertiesAtIndex(
-        imageSource, 0, nil) as Dictionary?
-    else {
-      return (nil, nil)
-    }
-
-    pixelWidth = imageProperties[kCGImagePropertyPixelWidth] as? Int
-    pixelHeight = imageProperties[kCGImagePropertyPixelHeight] as? Int
-
-    // Check orientation and flip size if required
-    if let raw = imageProperties[kCGImagePropertyOrientation] as? UInt32,
-      let cgOrient = CGImagePropertyOrientation(rawValue: raw),
-      cgOrient.isLandscape
-    {
-      swap(&pixelWidth, &pixelHeight)
-    }
-
-    return (pixelWidth, pixelHeight)
-  }
-
-  private func createSharedMediaFileForImage(
-    url: URL, dimensions: (width: Int?, height: Int?)
-  ) -> SharedMediaFile? {
-    let fileName = getFileName(from: url, type: .image)
-    let fileExtension = getExtension(from: url, type: .image)
-    let fileSize = getFileSize(from: url)
-    let mimeType = url.mimeType(ext: fileExtension)
-    let newName = "\(UUID().uuidString).\(fileExtension)"
-    let newPath = getAppGroupPath().appendingPathComponent(newName)
-
-    let copied = copyFile(at: url, to: newPath)
-    guard copied else {
+    let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+    
+    if let firstPath = paths.first {
+      _ = FileManager.default.fileExists(atPath: firstPath.path)
+      return firstPath
+    } else {
       return nil
     }
-
-    return SharedMediaFile(
-      path: newPath.absoluteString,
-      thumbnail: nil,
-      fileName: fileName,
-      fileSize: fileSize,
-      width: dimensions.width,
-      height: dimensions.height,
-      duration: nil,
-      mimeType: mimeType,
-      type: .image,
-      conversationId: self.conversationId
-    )
   }
-
-  private func getAppGroupPath() -> URL {
-    return FileManager.default.containerURL(
-      forSecurityApplicationGroupIdentifier: self.hostAppGroupIdentifier)!
-  }
-
-  private func handleVideos(
-    content: NSExtensionItem, attachment: NSItemProvider, index: Int
-  ) async {
-    Task.detached {
-      do {
-        guard
-          let url = try await attachment.loadItem(
-            forTypeIdentifier: self.videoContentType) as? URL
-        else {
-          throw NSError(
-            domain: "VideoLoadingError", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Invalid video format"])
-        }
-
-        await self.processVideoItem(url, content: content, index: index)
-      } catch {
-        NSLog("[ERROR] Cannot load video content: \(error)")
-        await self.dismissWithError(
-          message: "Cannot load video content: \(error)")
+  
+  private func saveScreenshot(_ image: UIImage) -> URL? {
+    guard let screenshotData = image.pngData() else {
+      return nil
+    }
+    
+    // Try using the app group container instead of documents directory
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.hostAppGroupIdentifier) else {
+      return nil
+    }
+    
+    let fileName = "screenshot_\(UUID().uuidString).png"
+    let screenshotPath = containerURL.appendingPathComponent(fileName)
+    
+    do {
+      try screenshotData.write(to: screenshotPath)
+      
+      let fileExists = FileManager.default.fileExists(atPath: screenshotPath.path)
+      
+      if fileExists {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: screenshotPath.path)
+        _ = attributes?[.size] as? Int ?? 0
       }
+      
+      return screenshotPath
+    } catch {
+      NSLog("[ERROR] saveScreenshot: Failed to write screenshot: \(error)")
+      NSLog("[ERROR] saveScreenshot: Error details: \(error.localizedDescription)")
+      return nil
     }
   }
-
-  private func processVideoItem(
-    _ url: URL, content: NSExtensionItem, index: Int
-  ) async {
-    let fileName = getFileName(from: url, type: .video)
-    let fileExtension = getExtension(from: url, type: .video)
-    let fileSize = getFileSize(from: url)
-    let mimeType = url.mimeType(ext: fileExtension)
-    let newName = "\(UUID().uuidString).\(fileExtension)"
-    let newPath = getAppGroupPath().appendingPathComponent(newName)
-
-    let copied = copyFile(at: url, to: newPath)
-    guard copied else {
-      dismissWithError(message: "Failed to copy video file")
-      return
-    }
-
-    guard
-      let sharedFile = getSharedMediaFile(
-        forVideo: newPath, fileName: fileName, fileSize: fileSize,
-        mimeType: mimeType)
-    else {
-      dismissWithError(message: "Failed to process video file")
-      return
-    }
-
-    self.sharedMedia.append(sharedFile)
-
-    // If this is the last item, save and redirect
-    let isLastItem = index == (content.attachments?.count)! - 1
-    if isLastItem {
-      saveAndRedirect(data: self.toData(data: self.sharedMedia), type: .media)
-    }
-  }
-
-  private func handlePdf(
-    content: NSExtensionItem, attachment: NSItemProvider, index: Int
-  ) async {
-    Task.detached {
-      do {
-        guard
-          let url = try await attachment.loadItem(
-            forTypeIdentifier: self.pdfContentType) as? URL
-        else {
-          throw NSError(
-            domain: "PDFLoadingError", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Invalid PDF format"])
-        }
-
-        await self.handleFileURL(content: content, url: url, index: index)
-      } catch {
-        NSLog("[ERROR] Cannot load pdf content: \(error)")
-        await self.dismissWithError(
-          message: "Cannot load pdf content: \(error)")
-      }
-    }
-  }
-
-  private func handleFiles(
-    content: NSExtensionItem, attachment: NSItemProvider, index: Int
-  ) async {
-    Task.detached {
-      do {
-        guard
-          let url = try await attachment.loadItem(
-            forTypeIdentifier: self.fileURLType) as? URL
-        else {
-          throw NSError(
-            domain: "FileLoadingError", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Invalid file format"])
-        }
-
-        await self.handleFileURL(content: content, url: url, index: index)
-      } catch {
-        NSLog("[ERROR] Cannot load file content: \(error)")
-        await self.dismissWithError(
-          message: "Cannot load file content: \(error)")
-      }
-    }
-  }
-
-  private func handleFileURL(content: NSExtensionItem, url: URL, index: Int)
-    async
+  
+  
+  private func handleVideos(content: NSExtensionItem, attachment: NSItemProvider, index: Int) async
   {
-    let fileName = getFileName(from: url, type: .file)
-    let fileExtension = getExtension(from: url, type: .file)
-    let fileSize = getFileSize(from: url)
+    Task.detached {
+      if let url = try? await attachment.loadItem(forTypeIdentifier: self.videoContentType) as? URL
+      {
+        Task { @MainActor in
+          
+          // Always copy
+          let fileName = self.getFileName(from: url, type: .video)
+          let fileExtension = self.getExtension(from: url, type: .video)
+          let fileSize = self.getFileSize(from: url)
+          let mimeType = url.mimeType(ext: fileExtension)
+          let newName = "\(UUID().uuidString).\(fileExtension)"
+          let newPath = FileManager.default
+            .containerURL(
+              forSecurityApplicationGroupIdentifier: self.hostAppGroupIdentifier)!
+            .appendingPathComponent(newName)
+          let copied = self.copyFile(at: url, to: newPath)
+          if copied {
+            guard
+              let sharedFile = self.getSharedMediaFile(
+                forVideo: newPath, fileName: fileName, fileSize: fileSize, mimeType: mimeType)
+            else {
+              return
+            }
+            self.sharedMedia.append(sharedFile)
+          }
+          
+          // If this is the last item, save imagesData in userDefaults and redirect to host app
+          if index == (content.attachments?.count)! - 1 {
+            let userDefaults = UserDefaults(suiteName: self.hostAppGroupIdentifier)
+            userDefaults?.set(self.toData(data: self.sharedMedia), forKey: self.sharedKey)
+            userDefaults?.synchronize()
+            self.redirectToHostApp(type: .media)
+          }
+          
+        }
+      } else {
+        NSLog("[ERROR] Cannot load video content !\(String(describing: content))")
+        await self.dismissWithError(
+          message: "Cannot load video content \(String(describing: content))")
+      }
+    }
+  }
+  
+  private func handlePdf(content: NSExtensionItem, attachment: NSItemProvider, index: Int) async {
+    Task.detached {
+      if let url = try? await attachment.loadItem(forTypeIdentifier: self.pdfContentType) as? URL {
+        Task { @MainActor in
+          
+          await self.handleFileURL(content: content, url: url, index: index)
+          
+        }
+      } else {
+        NSLog("[ERROR] Cannot load pdf content !\(String(describing: content))")
+        await self.dismissWithError(
+          message: "Cannot load pdf content \(String(describing: content))")
+      }
+    }
+  }
+  
+  private func handleFiles(content: NSExtensionItem, attachment: NSItemProvider, index: Int) async {
+    Task.detached {
+      if let url = try? await attachment.loadItem(forTypeIdentifier: self.fileURLType) as? URL {
+        Task { @MainActor in
+          
+          await self.handleFileURL(content: content, url: url, index: index)
+          
+        }
+      } else {
+        NSLog("[ERROR] Cannot load file content !\(String(describing: content))")
+        await self.dismissWithError(
+          message: "Cannot load file content \(String(describing: content))")
+      }
+    }
+  }
+  
+  private func handleFileURL(content: NSExtensionItem, url: URL, index: Int) async {
+    // Always copy
+    let fileName = self.getFileName(from: url, type: .file)
+    let fileExtension = self.getExtension(from: url, type: .file)
+    let fileSize = self.getFileSize(from: url)
     let mimeType = url.mimeType(ext: fileExtension)
     let newName = "\(UUID().uuidString).\(fileExtension)"
-    let newPath = getAppGroupPath().appendingPathComponent(newName)
-
-    let copied = copyFile(at: url, to: newPath)
-    guard copied else {
-      dismissWithError(message: "Failed to copy file")
-      return
+    let newPath = FileManager.default
+      .containerURL(
+        forSecurityApplicationGroupIdentifier: self.hostAppGroupIdentifier)!
+      .appendingPathComponent(newName)
+    let copied = self.copyFile(at: url, to: newPath)
+    if copied {
+      self.sharedMedia.append(
+        SharedMediaFile(
+          path: newPath.absoluteString, thumbnail: nil, fileName: fileName,
+          fileSize: fileSize, width: nil, height: nil, duration: nil, mimeType: mimeType,
+          type: .file, conversationId: self.conversationId))
     }
-
-    self.sharedMedia.append(
-      SharedMediaFile(
-        path: newPath.absoluteString,
-        thumbnail: nil,
-        fileName: fileName,
-        fileSize: fileSize,
-        width: nil,
-        height: nil,
-        duration: nil,
-        mimeType: mimeType,
-        type: .file,
-        conversationId: self.conversationId
-      )
-    )
-
-    // If this is the last item, save and redirect
-    let isLastItem = index == (content.attachments?.count)! - 1
-    if isLastItem {
-      saveAndRedirect(data: self.toData(data: self.sharedMedia), type: .file)
+    
+    if index == (content.attachments?.count)! - 1 {
+      let userDefaults = UserDefaults(suiteName: self.hostAppGroupIdentifier)
+      userDefaults?.set(self.toData(data: self.sharedMedia), forKey: self.sharedKey)
+      userDefaults?.synchronize()
+      self.redirectToHostApp(type: .file)
     }
   }
-
-  private func saveAndRedirect(data: Any, type: RedirectType) {
-    let userDefaults = UserDefaults(suiteName: self.hostAppGroupIdentifier)
-    userDefaults?.set(data, forKey: self.sharedKey)
-    userDefaults?.synchronize()
-    self.redirectToHostApp(type: type)
-  }
-
+  
   private func dismissWithError(message: String? = nil) {
     DispatchQueue.main.async {
       NSLog("[ERROR] Error loading application ! \(message!)")
       let alert = UIAlertController(
-        title: "Error", message: "Error loading application: \(message!)",
-        preferredStyle: .alert)
-
+        title: "Error", message: "Error loading application: \(message!)", preferredStyle: .alert)
+      
       let action = UIAlertAction(title: "OK", style: .cancel) { _ in
         self.dismiss(animated: true, completion: nil)
-        self.extensionContext!.completeRequest(
-          returningItems: [], completionHandler: nil)
+        self.extensionContext!.completeRequest(returningItems: [], completionHandler: nil)
       }
-
+      
       alert.addAction(action)
       self.present(alert, animated: true, completion: nil)
     }
   }
-
+  
   private func redirectToHostApp(type: RedirectType) {
     let url = URL(string: "\(shareProtocol)://dataUrl=\(sharedKey)#\(type)")!
     var responder = self as UIResponder?
-
+    
     while responder != nil {
-      guard let application = responder as? UIApplication else {
-        responder = responder!.next
-        continue
+      if let application = responder as? UIApplication {
+        if application.canOpenURL(url) {
+          application.open(url)
+        } else {
+          NSLog("redirectToHostApp canOpenURL KO: \(shareProtocol)")
+          self.dismissWithError(
+            message: "Application not found, invalid url scheme \(shareProtocol)")
+          return
+        }
       }
-
-      guard application.canOpenURL(url) else {
-        NSLog("redirectToHostApp canOpenURL KO: \(shareProtocol)")
-        self.dismissWithError(
-          message: "Application not found, invalid url scheme \(shareProtocol)")
-        return
-      }
-
-      application.open(url)
-      break
+      responder = responder!.next
     }
-
-    extensionContext!.completeRequest(
-      returningItems: [], completionHandler: nil)
+    extensionContext!.completeRequest(returningItems: [], completionHandler: nil)
   }
-
+  
   enum RedirectType {
     case media
     case text
     case weburl
     case file
   }
-
+  
   func getExtension(from url: URL, type: SharedMediaType) -> String {
     let parts = url.lastPathComponent.components(separatedBy: ".")
     var ex: String? = nil
@@ -569,11 +521,12 @@ class ShareViewController: UIViewController {
         ex = "MP4"
       case .file:
         ex = "TXT"
+        if url.lastPathComponent.lowercased().contains("pkpass") { ex = "pkpass" }
       }
     }
     return ex ?? "Unknown"
   }
-
+  
   func getFileName(from url: URL, type: SharedMediaType) -> String {
     var name = url.lastPathComponent
     if name == "" {
@@ -581,7 +534,7 @@ class ShareViewController: UIViewController {
     }
     return name
   }
-
+  
   func getFileSize(from url: URL) -> Int? {
     do {
       let resources = try url.resourceValues(forKeys: [.fileSizeKey])
@@ -591,7 +544,7 @@ class ShareViewController: UIViewController {
       return nil
     }
   }
-
+  
   func copyFile(at srcURL: URL, to dstURL: URL) -> Bool {
     do {
       if FileManager.default.fileExists(atPath: dstURL.path) {
@@ -604,18 +557,16 @@ class ShareViewController: UIViewController {
     }
     return true
   }
-
-  private func getSharedMediaFile(
-    forVideo: URL, fileName: String, fileSize: Int?, mimeType: String
-  )
-    -> SharedMediaFile?
+  
+  private func getSharedMediaFile(forVideo: URL, fileName: String, fileSize: Int?, mimeType: String)
+  -> SharedMediaFile?
   {
     let asset = AVAsset(url: forVideo)
     let thumbnailPath = getThumbnailPath(for: forVideo)
     let duration = (CMTimeGetSeconds(asset.duration) * 1000).rounded()
     var trackWidth: Int? = nil
     var trackHeight: Int? = nil
-
+    
     // get video info
     let track = asset.tracks(withMediaType: AVMediaType.video).first ?? nil
     if track != nil {
@@ -623,74 +574,55 @@ class ShareViewController: UIViewController {
       trackWidth = abs(Int(size.width))
       trackHeight = abs(Int(size.height))
     }
-
+    
     if FileManager.default.fileExists(atPath: thumbnailPath.path) {
       return SharedMediaFile(
-        path: forVideo.absoluteString, thumbnail: thumbnailPath.absoluteString,
-        fileName: fileName,
-        fileSize: fileSize, width: trackWidth, height: trackHeight,
-        duration: duration,
-        mimeType: mimeType, type: .video,
-        conversationId: self.conversationId)
+        path: forVideo.absoluteString, thumbnail: thumbnailPath.absoluteString, fileName: fileName,
+        fileSize: fileSize, width: trackWidth, height: trackHeight, duration: duration,
+        mimeType: mimeType, type: .video, conversationId: self.conversationId)
     }
-
+    
     var saved = false
     let assetImgGenerate = AVAssetImageGenerator(asset: asset)
     assetImgGenerate.appliesPreferredTrackTransform = true
     assetImgGenerate.maximumSize = CGSize(width: 360, height: 360)
     do {
       let img = try assetImgGenerate.copyCGImage(
-        at: CMTimeMakeWithSeconds(600, preferredTimescale: Int32(1.0)),
-        actualTime: nil)
+        at: CMTimeMakeWithSeconds(600, preferredTimescale: Int32(1.0)), actualTime: nil)
       try UIImage.pngData(UIImage(cgImage: img))()?.write(to: thumbnailPath)
       saved = true
     } catch {
       saved = false
     }
-
+    
     return saved
-      ? SharedMediaFile(
-        path: forVideo.absoluteString, thumbnail: thumbnailPath.absoluteString,
-        fileName: fileName,
-        fileSize: fileSize, width: trackWidth, height: trackHeight,
-        duration: duration,
-        mimeType: mimeType, type: .video,
-        conversationId: self.conversationId) : nil
+    ? SharedMediaFile(
+      path: forVideo.absoluteString, thumbnail: thumbnailPath.absoluteString, fileName: fileName,
+      fileSize: fileSize, width: trackWidth, height: trackHeight, duration: duration,
+      mimeType: mimeType, type: .video, conversationId: self.conversationId) : nil
   }
-
+  
   private func getThumbnailPath(for url: URL) -> URL {
-    let fileName = Data(url.lastPathComponent.utf8).base64EncodedString()
-      .replacingOccurrences(
-        of: "==", with: "")
+    let fileName = Data(url.lastPathComponent.utf8).base64EncodedString().replacingOccurrences(
+      of: "==", with: "")
     let path = FileManager.default
-      .containerURL(
-        forSecurityApplicationGroupIdentifier: self.hostAppGroupIdentifier)!
+      .containerURL(forSecurityApplicationGroupIdentifier: self.hostAppGroupIdentifier)!
       .appendingPathComponent("\(fileName).jpg")
     return path
   }
-
+  
   class WebUrl: Codable {
     var conversationId: String?
     var url: String
     var meta: String
-
+    
     init(url: String, meta: String, conversationId: String?) {
       self.url = url
       self.meta = meta
       self.conversationId = conversationId
     }
   }
-
-  class SharedText: Codable {
-    var text: String
-    var conversationId: String?
-
-    init(text: String, conversationId: String?) {
-      self.text = text
-      self.conversationId = conversationId
-    }
-  }
-
+  
   class SharedMediaFile: Codable {
     var conversationId: String?
     var path: String  // can be image, video or url path
@@ -702,7 +634,7 @@ class ShareViewController: UIViewController {
     var duration: Double?  // video duration in milliseconds
     var mimeType: String
     var type: SharedMediaType
-
+    
     init(
       path: String, thumbnail: String?, fileName: String, fileSize: Int?,
       width: Int?, height: Int?,
@@ -721,24 +653,19 @@ class ShareViewController: UIViewController {
       self.conversationId = conversationId
     }
   }
-
+  
   enum SharedMediaType: Int, Codable {
     case image
     case video
     case file
   }
-
+  
   func toData(data: [WebUrl]) -> Data? {
     let encodedData = try? JSONEncoder().encode(data)
     return encodedData
   }
-
+  
   func toData(data: [SharedMediaFile]) -> Data? {
-    let encodedData = try? JSONEncoder().encode(data)
-    return encodedData
-  }
-
-  func toData(data: [SharedText]) -> Data? {
     let encodedData = try? JSONEncoder().encode(data)
     return encodedData
   }
@@ -862,17 +789,5 @@ extension URL {
 extension Array {
   subscript(safe index: UInt) -> Element? {
     return Int(index) < count ? self[Int(index)] : nil
-  }
-}
-
-extension CGImagePropertyOrientation {
-  /// Returns true if the image is rotated 90° or 270°
-  var isLandscape: Bool {
-    switch self {
-    case .left, .leftMirrored, .right, .rightMirrored:
-      return true
-    default:
-      return false
-    }
   }
 }

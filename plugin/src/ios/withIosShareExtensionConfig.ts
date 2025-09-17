@@ -3,7 +3,7 @@ import { ConfigPlugin } from "@expo/config-plugins";
 import {
   getShareExtensionBundledIdentifier,
   getShareExtensionName,
-} from "./utils";
+} from "./constants";
 import { getShareExtensionEntitlements } from "./writeIosShareExtensionFiles";
 import { Parameters } from "../types";
 
